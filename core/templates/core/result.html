@@ -1,0 +1,37 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Success - PDF Master{% endblock %}
+
+{% block content %}
+<div class="result-card">
+    <span class="material-symbols-outlined success-icon">check_circle</span>
+    <h1 style="margin-bottom: 0.5rem;">Your file is ready!</h1>
+    <p style="color: var(--text-muted); margin-bottom: 2rem;">
+        Successfully processed using <strong>{{ file.tool_used }}</strong> tool.
+    </p>
+
+    <div style="background: var(--glass); padding: 1.5rem; border-radius: 1rem; margin-bottom: 2rem; text-align: left;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px;">
+                    {{ file.original_name }}
+                </div>
+                <div style="color: var(--text-muted); font-size: 0.9rem;">
+                    Created at {{ file.created_at|date:"H:i, M d" }}
+                </div>
+            </div>
+            <a href="{{ file.file.url }}" class="btn" download>
+                <span class="material-symbols-outlined" style="margin-right: 0.5rem;">download</span>
+                Download
+            </a>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 1rem; justify-content: center;">
+        <a href="{% url 'index' %}" class="btn" style="background: var(--glass); color: white;">
+            Process Another
+        </a>
+        <!-- Add share/preview buttons here if needed -->
+    </div>
+</div>
+{% endblock %}

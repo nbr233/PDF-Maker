@@ -1,0 +1,437 @@
+{% extends 'core/base.html' %}
+{% block title %}PDF Maker & Editor{% endblock %}
+{% block content %}
+<style>
+.editor-layout{display:flex;gap:1.5rem;min-height:80vh}
+.sidebar{width:240px;flex-shrink:0;background:rgba(30,41,59,.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);border-radius:1.25rem;padding:1.25rem;display:flex;flex-direction:column;gap:.5rem}
+.sidebar h3{margin:.5rem 0 .3rem;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-muted)}
+.sbtn{display:flex;align-items:center;gap:.5rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:var(--text-main);border-radius:.75rem;padding:.6rem .9rem;font-size:.9rem;cursor:pointer;transition:all .2s;width:100%;text-align:left}
+.sbtn:hover{background:rgba(56,189,248,.15);border-color:var(--primary);color:var(--primary)}
+.sbtn .material-symbols-outlined{font-size:1.1rem}
+.canvas-area{flex:1}
+#pages-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1.2rem;min-height:200px}
+.page-card{background:rgba(30,41,59,.8);border:2px solid rgba(255,255,255,.08);border-radius:1rem;overflow:hidden;cursor:grab;transition:all .2s;user-select:none}
+.page-card:active{cursor:grabbing}
+.page-card.drag-over{border-color:var(--primary);box-shadow:0 0 0 3px rgba(56,189,248,.3)}
+.page-card.dragging{opacity:.4;transform:scale(.95)}
+.page-thumb{width:100%;aspect-ratio:210/297;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.blank-inner{width:100%;height:100%;background:linear-gradient(135deg,#f8fafc,#e2e8f0);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;gap:.4rem;font-size:.75rem}
+.blank-inner .material-symbols-outlined{font-size:2rem;color:#cbd5e1}
+.page-footer{padding:.4rem .6rem;display:flex;justify-content:space-between;align-items:center}
+.page-label{font-size:.75rem;color:var(--text-muted)}
+.pf-btns{display:flex;gap:.25rem}
+.ic-btn{background:none;border:none;cursor:pointer;border-radius:.4rem;padding:.2rem .3rem;display:flex;align-items:center;transition:all .2s}
+.ic-btn.del{color:#f87171}.ic-btn.del:hover{background:rgba(239,68,68,.2)}
+.ic-btn.edit{color:#38bdf8}.ic-btn.edit:hover{background:rgba(56,189,248,.15)}
+.ic-btn .material-symbols-outlined{font-size:.95rem}
+.empty-state{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4rem;text-align:center;color:var(--text-muted);border:2px dashed rgba(255,255,255,.1);border-radius:1rem}
+.empty-state .material-symbols-outlined{font-size:4rem;margin-bottom:1rem;color:rgba(56,189,248,.3)}
+#build-btn{background:linear-gradient(135deg,var(--primary),#818cf8);color:#000;border:none;padding:.85rem 1.5rem;border-radius:.85rem;font-size:.95rem;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:.5rem;width:100%;justify-content:center;margin-top:.5rem}
+#build-btn:disabled{opacity:.5;cursor:not-allowed}
+/* ===== MODAL ===== */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1000;backdrop-filter:blur(6px)}
+.modal-bg.open{display:flex}
+.modal-wrap{display:flex;width:100%;height:100%}
+.modal-sidebar{width:220px;flex-shrink:0;background:#1e293b;padding:1rem;display:flex;flex-direction:column;gap:.5rem;overflow-y:auto}
+.modal-sidebar h3{margin:.5rem 0 .25rem;font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-muted)}
+.modal-main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:1.5rem;overflow:auto;background:#0f172a;gap:1rem}
+.modal-header{display:flex;align-items:center;gap:1rem;align-self:stretch}
+.modal-header h2{margin:0;font-size:1.1rem}
+.page-canvas-wrap{position:relative;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.5);flex-shrink:0}
+.page-canvas-wrap canvas{display:block}
+.ov-layer{position:absolute;inset:0;overflow:hidden}
+.ov-el{position:absolute;border:2px dashed transparent;cursor:move;box-sizing:border-box;min-width:40px;min-height:20px}
+.ov-el:hover{border-color:rgba(56,189,248,.5)}
+.ov-el.selected{border-color:#38bdf8}
+.ov-el .resize-br{position:absolute;right:-5px;bottom:-5px;width:14px;height:14px;background:#38bdf8;border-radius:3px;cursor:se-resize}
+.ov-el .del-ov{position:absolute;top:-10px;right:-10px;width:20px;height:20px;background:#ef4444;border:none;border-radius:50%;color:#fff;font-size:.7rem;cursor:pointer;display:none;align-items:center;justify-content:center}
+.ov-el.selected .del-ov{display:flex}
+.text-ov-inner{width:100%;height:100%;background:transparent;outline:none;border:none;resize:none;font-family:inherit;overflow:hidden;word-wrap:break-word}
+.img-ov-inner{width:100%;height:100%;object-fit:contain;pointer-events:none}
+.prop-row{display:flex;flex-direction:column;gap:.2rem;margin-bottom:.6rem}
+.prop-row label{font-size:.7rem;color:var(--text-muted)}
+.prop-row input,.prop-row textarea,.prop-row select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:.5rem;padding:.35rem .5rem;font-size:.8rem;width:100%;box-sizing:border-box}
+.prop-row textarea{resize:vertical;min-height:60px}
+.toast{position:fixed;bottom:2rem;right:2rem;background:#10b981;color:#fff;padding:.8rem 1.4rem;border-radius:.75rem;font-weight:600;display:none;z-index:9999}
+</style>
+
+<!-- Header -->
+<div style="margin-bottom:1.5rem;display:flex;align-items:center;gap:1rem">
+  <a href="{% url 'index' %}" class="sbtn" style="width:auto;text-decoration:none"><span class="material-symbols-outlined">arrow_back</span>Back</a>
+  <div>
+    <h1 style="margin:0;font-size:1.5rem">PDF Maker &amp; Editor</h1>
+    <p style="margin:0;color:var(--text-muted);font-size:.85rem">Import PDF · Add images · Edit content · Reorder pages</p>
+  </div>
+</div>
+
+<div class="editor-layout">
+  <div class="sidebar">
+    <h3>Add Pages</h3>
+    <button class="sbtn" onclick="document.getElementById('pdf-up').click()"><span class="material-symbols-outlined">picture_as_pdf</span>Import PDF</button>
+    <input type="file" id="pdf-up" accept=".pdf" multiple style="display:none">
+    <button class="sbtn" onclick="document.getElementById('img-up').click()"><span class="material-symbols-outlined">add_photo_alternate</span>Add Image Page</button>
+    <input type="file" id="img-up" accept="image/*" multiple style="display:none">
+    <button class="sbtn" onclick="addBlank()"><span class="material-symbols-outlined">note_add</span>Add Blank Page</button>
+    <hr style="border-color:rgba(255,255,255,.08);margin:.25rem 0">
+    <h3>Actions</h3>
+    <button class="sbtn" style="color:#f87171" onclick="clearAll()"><span class="material-symbols-outlined">delete_sweep</span>Clear All</button>
+    <div style="margin-top:auto">
+      <button id="build-btn" onclick="buildPDF()"><span class="material-symbols-outlined">download</span>Build &amp; Download</button>
+      <p id="status-msg" style="font-size:.75rem;color:var(--text-muted);margin:.4rem 0 0;text-align:center"></p>
+    </div>
+  </div>
+
+  <div class="canvas-area">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h2 style="margin:0;font-size:1.2rem">Document Pages</h2>
+      <span id="count-lbl" style="color:var(--text-muted);font-size:.85rem">0 pages</span>
+    </div>
+    <div id="pages-grid">
+      <div class="empty-state" id="empty-s"><span class="material-symbols-outlined">library_add</span><p>Import a PDF or add images to get started</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- Editor Modal -->
+<div class="modal-bg" id="editor-modal">
+  <div class="modal-wrap">
+    <!-- Modal sidebar (tools + properties) -->
+    <div class="modal-sidebar">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <span style="font-weight:700;font-size:.95rem">Page Editor</span>
+        <button class="sbtn" style="width:auto;padding:.3rem .6rem" onclick="closeEditor()"><span class="material-symbols-outlined" style="font-size:1rem">close</span></button>
+      </div>
+      <h3>Add Overlay</h3>
+      <button class="sbtn" onclick="addTextOverlay()"><span class="material-symbols-outlined">text_fields</span>Add Text</button>
+      <button class="sbtn" onclick="document.getElementById('ov-img-up').click()"><span class="material-symbols-outlined">image</span>Add Image</button>
+      <input type="file" id="ov-img-up" accept="image/*" style="display:none">
+      <hr style="border-color:rgba(255,255,255,.08);margin:.5rem 0">
+      <h3>Properties</h3>
+      <div id="props-empty" style="color:var(--text-muted);font-size:.8rem">Select an element to edit</div>
+      <div id="props-panel" style="display:none">
+        <div class="prop-row" id="prop-text-row">
+          <label>Text Content</label>
+          <textarea id="prop-text" oninput="updateSelProp('text',this.value)"></textarea>
+        </div>
+        <div class="prop-row">
+          <label>Font Size</label>
+          <input type="number" id="prop-fs" value="16" min="6" max="120" oninput="updateSelProp('fontSize',this.value)">
+        </div>
+        <div class="prop-row">
+          <label>Color</label>
+          <input type="color" id="prop-color" value="#000000" oninput="updateSelProp('color',this.value)">
+        </div>
+        <button class="sbtn" style="color:#f87171;margin-top:.25rem" onclick="deleteSelected()"><span class="material-symbols-outlined">delete</span>Delete Element</button>
+      </div>
+      <div style="margin-top:auto">
+        <button class="sbtn" style="background:rgba(56,189,248,.15);color:var(--primary);border-color:var(--primary)" onclick="saveAndClose()"><span class="material-symbols-outlined">save</span>Save &amp; Close</button>
+      </div>
+    </div>
+
+    <!-- Canvas area -->
+    <div class="modal-main">
+      <div class="modal-header">
+        <h2 id="modal-title">Editing Page</h2>
+        <span style="color:var(--text-muted);font-size:.8rem">Drag elements to move · Drag corner to resize · Double-click text to edit</span>
+      </div>
+      <div class="page-canvas-wrap" id="pcw">
+        <canvas id="page-canvas"></canvas>
+        <div class="ov-layer" id="ov-layer"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let pages=[];  // {type,src,page_index,label,thumbDataURL,overlays:[]}
+let dragSrcIdx=null;
+let editingIdx=null;
+let selectedEl=null;
+
+/* ===== Toast ===== */
+function toast(msg,c='#10b981'){const t=document.getElementById('toast');t.textContent=msg;t.style.background=c;t.style.display='block';setTimeout(()=>t.style.display='none',3000);}
+
+/* ===== File helpers ===== */
+function fileToDataURL(f){return new Promise(r=>{const rd=new FileReader();rd.onload=e=>r(e.target.result);rd.readAsDataURL(f);})}
+
+/* ===== Render PDF page to canvas, return dataURL ===== */
+async function pdfPageToDataURL(pdfDataURL,pageIdx,scale=1.5){
+  const raw=atob(pdfDataURL.split(',')[1]);
+  const arr=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+  const pdf=await pdfjsLib.getDocument({data:arr}).promise;
+  const page=await pdf.getPage(pageIdx+1);
+  const vp=page.getViewport({scale});
+  const cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;
+  await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+  return cv.toDataURL();
+}
+
+/* ===== Grid ===== */
+function updateCount(){document.getElementById('count-lbl').textContent=pages.length+' page'+(pages.length!==1?'s':'');}
+
+function renderGrid(){
+  const g=document.getElementById('pages-grid');g.innerHTML='';
+  const es=document.getElementById('empty-s')||Object.assign(document.createElement('div'),{className:'empty-state',id:'empty-s',innerHTML:'<span class="material-symbols-outlined">library_add</span><p>Import a PDF or add images to get started</p>'});
+  if(pages.length===0){g.appendChild(es);updateCount();return;}
+  pages.forEach((_,i)=>g.appendChild(makeCard(i)));
+  updateCount();
+}
+
+function makeCard(idx){
+  const p=pages[idx];
+  const card=document.createElement('div');card.className='page-card';card.dataset.idx=idx;
+  // thumb
+  const th=document.createElement('div');th.className='page-thumb';
+  if(p.thumbDataURL){const im=document.createElement('img');im.src=p.thumbDataURL;im.style.cssText='width:100%;height:100%;object-fit:contain';th.appendChild(im);}
+  else{th.innerHTML='<div class="blank-inner"><span class="material-symbols-outlined">article</span><span>Blank</span></div>';}
+  // overlay badge
+  if(p.overlays&&p.overlays.length){
+    const b=document.createElement('div');
+    b.style.cssText='position:absolute;top:4px;left:4px;background:rgba(56,189,248,.85);color:#000;font-size:.6rem;font-weight:700;padding:2px 6px;border-radius:999px';
+    b.textContent=p.overlays.length+' overlay'+(p.overlays.length>1?'s':'');
+    th.style.position='relative';th.appendChild(b);
+  }
+  // footer
+  const ft=document.createElement('div');ft.className='page-footer';
+  ft.innerHTML=`<span class="page-label">Page ${idx+1}</span><div class="pf-btns">
+    <button class="ic-btn edit" title="Edit overlays" onclick="openEditor(${idx})"><span class="material-symbols-outlined">edit</span></button>
+    <button class="ic-btn del" title="Delete" onclick="deletePage(${idx})"><span class="material-symbols-outlined">delete</span></button>
+  </div>`;
+  card.appendChild(th);card.appendChild(ft);
+  // drag
+  card.draggable=true;
+  card.addEventListener('dragstart',e=>{dragSrcIdx=idx;card.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+  card.addEventListener('dragend',()=>card.classList.remove('dragging'));
+  card.addEventListener('dragover',e=>{e.preventDefault();card.classList.add('drag-over');});
+  card.addEventListener('dragleave',()=>card.classList.remove('drag-over'));
+  card.addEventListener('drop',e=>{e.preventDefault();card.classList.remove('drag-over');if(dragSrcIdx===null||dragSrcIdx===idx)return;const m=pages.splice(dragSrcIdx,1)[0];pages.splice(idx,0,m);dragSrcIdx=null;renderGrid();});
+  return card;
+}
+
+/* ===== Actions ===== */
+function deletePage(i){pages.splice(i,1);renderGrid();toast('Page deleted');}
+async function addBlank(){pages.push({type:'blank',overlays:[],thumbDataURL:null});renderGrid();toast('Blank page added');}
+function clearAll(){if(!pages.length)return;if(confirm('Clear all?')){pages=[];renderGrid();}}
+
+document.getElementById('pdf-up').addEventListener('change',async function(){
+  for(const f of this.files){
+    const du=await fileToDataURL(f);
+    const raw=atob(du.split(',')[1]);const arr=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+    const pdf=await pdfjsLib.getDocument({data:arr}).promise;
+    for(let pi=0;pi<pdf.numPages;pi++){
+      const tdu=await pdfPageToDataURL(du,pi,1.2);
+      pages.push({type:'pdf',src:du,page_index:pi,label:f.name+' p'+(pi+1),thumbDataURL:tdu,overlays:[]});
+    }
+    toast('Imported '+pdf.numPages+' page(s)');
+  }
+  renderGrid();this.value='';
+});
+
+document.getElementById('img-up').addEventListener('change',async function(){
+  for(const f of this.files){const du=await fileToDataURL(f);pages.push({type:'image',src:du,label:f.name,thumbDataURL:du,overlays:[]});toast('Image added');}
+  renderGrid();this.value='';
+});
+
+/* ===== EDITOR MODAL ===== */
+function openEditor(idx){
+  editingIdx=idx;selectedEl=null;
+  const p=pages[idx];
+  document.getElementById('modal-title').textContent='Editing Page '+(idx+1);
+  document.getElementById('editor-modal').classList.add('open');
+  renderEditorCanvas(p);
+}
+
+async function renderEditorCanvas(p){
+  const cv=document.getElementById('page-canvas');
+  const layer=document.getElementById('ov-layer');
+  layer.innerHTML='';
+
+  // Render background
+  const A4W=794,A4H=1123; // approx A4 at 96dpi
+  if(p.thumbDataURL){
+    const img=new Image();img.src=p.thumbDataURL;
+    await new Promise(r=>img.onload=r);
+    cv.width=img.naturalWidth||A4W;cv.height=img.naturalHeight||A4H;
+    cv.getContext('2d').drawImage(img,0,0);
+  } else {
+    cv.width=A4W;cv.height=A4H;
+    const ctx=cv.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,A4W,A4H);
+  }
+  document.getElementById('pcw').style.width=cv.width+'px';
+  document.getElementById('pcw').style.height=cv.height+'px';
+
+  // Restore overlays
+  (p.overlays||[]).forEach(ov=>createOverlayEl(ov,cv.width,cv.height));
+}
+
+function createOverlayEl(ov,cw,ch){
+  const layer=document.getElementById('ov-layer');
+  const el=document.createElement('div');el.className='ov-el';
+  el.style.left=(ov.x*cw)+'px';el.style.top=(ov.y*ch)+'px';
+  el.style.width=(ov.w*cw)+'px';el.style.height=(ov.h*ch)+'px';
+  el._ov=ov;
+
+  if(ov.type==='text'){
+    const ta=document.createElement('textarea');ta.className='text-ov-inner';
+    ta.value=ov.text||'';ta.style.fontSize=(ov.fontSize||16)+'px';ta.style.color=ov.color||'#000';
+    ta.addEventListener('input',()=>{ov.text=ta.value;});
+    el.appendChild(ta);
+  } else {
+    const im=document.createElement('img');im.src=ov.src;im.className='img-ov-inner';
+    el.appendChild(im);
+  }
+
+  // Resize handle
+  const rh=document.createElement('div');rh.className='resize-br';el.appendChild(rh);
+  // Delete button
+  const db=document.createElement('button');db.className='del-ov';db.innerHTML='✕';db.onclick=e=>{e.stopPropagation();ov._del=true;el.remove();pages[editingIdx].overlays=pages[editingIdx].overlays.filter(o=>!o._del);selectEl(null);};
+  el.appendChild(db);
+
+  // Drag to move
+  makeDraggable(el,rh,cw,ch);
+  el.addEventListener('mousedown',e=>{if(e.target===rh)return;selectEl(el);});
+  layer.appendChild(el);
+}
+
+function makeDraggable(el,rh,cw,ch){
+  let sx,sy,sl,st,resizing=false;
+  el.addEventListener('mousedown',e=>{
+    if(e.target===rh){resizing=true;}
+    sx=e.clientX;sy=e.clientY;sl=el.offsetLeft;st=el.offsetTop;
+    const sw=el.offsetWidth,sh=el.offsetHeight;
+    function mm(e2){
+      const dx=e2.clientX-sx,dy=e2.clientY-sy;
+      if(resizing){
+        el.style.width=Math.max(40,sw+dx)+'px';el.style.height=Math.max(20,sh+dy)+'px';
+        updateOvFromEl(el,cw,ch);
+      } else {
+        el.style.left=Math.max(0,sl+dx)+'px';el.style.top=Math.max(0,st+dy)+'px';
+        updateOvFromEl(el,cw,ch);
+      }
+    }
+    function mu(){resizing=false;document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);}
+    document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
+    e.preventDefault();
+  });
+}
+
+function updateOvFromEl(el,cw,ch){
+  const ov=el._ov;
+  ov.x=el.offsetLeft/cw;ov.y=el.offsetTop/ch;ov.w=el.offsetWidth/cw;ov.h=el.offsetHeight/ch;
+}
+
+function selectEl(el){
+  document.querySelectorAll('.ov-el').forEach(e=>e.classList.remove('selected'));
+  selectedEl=el;
+  const pp=document.getElementById('props-panel');
+  const pe=document.getElementById('props-empty');
+  const ptr=document.getElementById('prop-text-row');
+  if(!el){pp.style.display='none';pe.style.display='block';return;}
+  el.classList.add('selected');
+  pp.style.display='block';pe.style.display='none';
+  const ov=el._ov;
+  document.getElementById('prop-fs').value=ov.fontSize||16;
+  document.getElementById('prop-color').value=ov.color||'#000000';
+  if(ov.type==='text'){ptr.style.display='flex';document.getElementById('prop-text').value=ov.text||'';}
+  else{ptr.style.display='none';}
+}
+
+function updateSelProp(prop,val){
+  if(!selectedEl)return;
+  const ov=selectedEl._ov;ov[prop]=val;
+  if(prop==='text'){const ta=selectedEl.querySelector('textarea');if(ta)ta.value=val;}
+  if(prop==='fontSize'){const ta=selectedEl.querySelector('textarea');if(ta)ta.style.fontSize=val+'px';}
+  if(prop==='color'){const ta=selectedEl.querySelector('textarea');if(ta)ta.style.color=val;}
+}
+
+function deleteSelected(){if(!selectedEl)return;selectedEl._ov._del=true;selectedEl.remove();pages[editingIdx].overlays=pages[editingIdx].overlays.filter(o=>!o._del);selectEl(null);}
+
+function addTextOverlay(){
+  const cv=document.getElementById('page-canvas');
+  const ov={type:'text',x:.1,y:.1,w:.5,h:.12,text:'Your text here',fontSize:16,color:'#000000'};
+  pages[editingIdx].overlays.push(ov);
+  createOverlayEl(ov,cv.width,cv.height);
+  toast('Text added — drag to position');
+}
+
+document.getElementById('ov-img-up').addEventListener('change',async function(){
+  if(!this.files[0])return;
+  const du=await fileToDataURL(this.files[0]);
+  const cv=document.getElementById('page-canvas');
+  const ov={type:'image',x:.2,y:.2,w:.4,h:.3,src:du};
+  pages[editingIdx].overlays.push(ov);
+  createOverlayEl(ov,cv.width,cv.height);
+  this.value='';toast('Image overlay added');
+});
+
+function saveAndClose(){
+  // sync overlay positions from DOM
+  const cv=document.getElementById('page-canvas');
+  document.querySelectorAll('.ov-el').forEach(el=>updateOvFromEl(el,cv.width,cv.height));
+  closeEditor();
+  renderGrid();
+  toast('Overlays saved ✓');
+}
+
+function closeEditor(){document.getElementById('editor-modal').classList.remove('open');selectEl(null);}
+
+/* ===== Build PDF ===== */
+async function buildPDF(){
+  if(!pages.length){toast('Add at least one page!','#ef4444');return;}
+  const btn=document.getElementById('build-btn');const msg=document.getElementById('status-msg');
+  btn.disabled=true;msg.textContent='Preparing…';
+
+  // Deduplicate large src payloads — send each unique PDF/image src only once
+  const srcMap={};  // key -> base64 src
+  let srcCounter=0;
+  function getSrcKey(src){
+    if(!src) return null;
+    for(const [k,v] of Object.entries(srcMap)){if(v===src)return k;}
+    const k='s'+(srcCounter++);srcMap[k]=src;return k;
+  }
+
+  const payload_pages=pages.map(p=>({
+    type:p.type,
+    src_key: (p.type!=='blank') ? getSrcKey(p.src) : null,
+    page_index:p.page_index||0,
+    overlays:(p.overlays||[]).filter(o=>!o._del).map(o=>({
+      type:o.type,x:o.x,y:o.y,w:o.w,h:o.h,
+      text:o.text||'',fontSize:parseInt(o.fontSize)||16,color:o.color||'#000000',
+      src_key: o.src ? getSrcKey(o.src) : null
+    }))
+  }));
+
+  const body=JSON.stringify({pages:payload_pages, sources:srcMap});
+  const kb=Math.round(body.length/1024);
+  msg.textContent=`Sending ${kb} KB…`;
+
+  try{
+    const r=await fetch("{% url 'pdf-maker-process' %}",{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:body
+    });
+    const d=await r.json();
+    if(d.success){
+      const a=document.createElement('a');a.href=d.download_url;a.download=d.filename;a.click();
+      toast('✅ PDF ready!');msg.textContent='';
+    } else {
+      toast('Error: '+(d.error||'Unknown'),'#ef4444');
+      msg.textContent=d.error||'Build failed';
+    }
+  }catch(e){toast('Network error: '+e.message,'#ef4444');msg.textContent='Network error';}
+  btn.disabled=false;
+}
+
+// click outside overlay deselects
+document.getElementById('ov-layer').addEventListener('mousedown',e=>{if(e.target===e.currentTarget)selectEl(null);});
+
+renderGrid();
+</script>
+{% endblock %}
